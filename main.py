@@ -40,7 +40,7 @@ class BinaryOptionsRequest(BaseModel):
     """Model for binary options prediction request"""
     ohlc_data: List[OHLCData]
     prediction_timeframe: Optional[int] = 2  # Number of candles to predict (default 2)
-    confidence_threshold: Optional[float] = 0.6  # Minimum confidence level (0.5-1.0)
+    confidence_threshold: Optional[float] = 0.6  # M                                                                                                       inimum confidence level (0.5-1.0)
 
 def convert_ohlc_to_dataframe(ohlc_data: List[OHLCData]) -> pd.DataFrame:
     """
