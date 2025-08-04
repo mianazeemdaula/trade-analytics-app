@@ -315,163 +315,205 @@ def predict_binary_options(df: pd.DataFrame, prediction_timeframe: int = 2, conf
         Dictionary with prediction results and analysis
     """
     try:
+        # Ensure all data is clean and has no NaN values in essential columns
+        essential_cols = ['open', 'high', 'low', 'close']
+        if df[essential_cols].isnull().any().any():
+            # Fill any NaN values with forward fill then backward fill
+            df = df.ffill().bfill()
+        
+        # Also handle volume column separately
+        if 'volume' in df.columns and df['volume'].isnull().any():
+            df['volume'] = df['volume'].fillna(1000.0)  # Default volume
+        
         signals = []
         analysis = {}
         
         # 1. RSI Analysis (14 period)
-        if len(df) >= 14:
-            rsi = ta.rsi(df['close'], length=14)
-            if not rsi.empty and pd.notna(rsi.iloc[-1]):
-                current_rsi = float(rsi.iloc[-1])
-                analysis['rsi'] = current_rsi
-                
-                if current_rsi < 30:
-                    signals.append(('rsi', 'bullish', 0.8, 'RSI oversold - likely reversal up'))
-                elif current_rsi > 70:
-                    signals.append(('rsi', 'bearish', 0.8, 'RSI overbought - likely reversal down'))
-                elif current_rsi < 45:
-                    signals.append(('rsi', 'bullish', 0.4, 'RSI below midpoint - slight bullish bias'))
-                elif current_rsi > 55:
-                    signals.append(('rsi', 'bearish', 0.4, 'RSI above midpoint - slight bearish bias'))
+        try:
+            if len(df) >= 14:
+                rsi = ta.rsi(df['close'], length=14)
+                if not rsi.empty and pd.notna(rsi.iloc[-1]):
+                    current_rsi = float(rsi.iloc[-1])
+                    analysis['rsi'] = current_rsi
+                    
+                    if current_rsi < 30:
+                        signals.append(('rsi', 'bullish', 0.8, 'RSI oversold - likely reversal up'))
+                    elif current_rsi > 70:
+                        signals.append(('rsi', 'bearish', 0.8, 'RSI overbought - likely reversal down'))
+                    elif current_rsi < 45:
+                        signals.append(('rsi', 'bullish', 0.4, 'RSI below midpoint - slight bullish bias'))
+                    elif current_rsi > 55:
+                        signals.append(('rsi', 'bearish', 0.4, 'RSI above midpoint - slight bearish bias'))
+        except Exception as e:
+            pass  # Skip RSI analysis if it fails
         
         # 2. MACD Analysis
-        if len(df) >= 26:
-            macd_data = ta.macd(df['close'], fast=12, slow=26, signal=9)
-            if macd_data is not None and not macd_data.empty:
-                macd_line = macd_data['MACD_12_26_9'].iloc[-1]
-                signal_line = macd_data['MACDs_12_26_9'].iloc[-1]
-                histogram = macd_data['MACDh_12_26_9'].iloc[-1]
-                
-                # Check for None/NaN values before using them
-                if pd.notna(macd_line) and pd.notna(signal_line) and pd.notna(histogram):
-                    analysis['macd'] = {'line': round(float(macd_line), 4), 'signal': round(float(signal_line), 4)}
+        try:
+            if len(df) >= 26:
+                macd_data = ta.macd(df['close'], fast=12, slow=26, signal=9)
+                if macd_data is not None and not macd_data.empty:
+                    macd_line = macd_data['MACD_12_26_9'].iloc[-1]
+                    signal_line = macd_data['MACDs_12_26_9'].iloc[-1]
+                    histogram = macd_data['MACDh_12_26_9'].iloc[-1]
                     
-                    if macd_line > signal_line and histogram > 0:
-                        signals.append(('macd', 'bullish', 0.7, 'MACD bullish crossover'))
-                    elif macd_line < signal_line and histogram < 0:
-                        signals.append(('macd', 'bearish', 0.7, 'MACD bearish crossover'))
+                    # Check for None/NaN values before using them
+                    if pd.notna(macd_line) and pd.notna(signal_line) and pd.notna(histogram):
+                        analysis['macd'] = {'line': round(float(macd_line), 4), 'signal': round(float(signal_line), 4)}
+                        
+                        if macd_line > signal_line and histogram > 0:
+                            signals.append(('macd', 'bullish', 0.7, 'MACD bullish crossover'))
+                        elif macd_line < signal_line and histogram < 0:
+                            signals.append(('macd', 'bearish', 0.7, 'MACD bearish crossover'))
+        except Exception as e:
+            pass  # Skip MACD analysis if it fails
         
         # 3. Moving Average Analysis
-        if len(df) >= 20:
-            sma_20 = ta.sma(df['close'], length=20)
-            ema_12 = ta.ema(df['close'], length=12)
-            
-            if (not sma_20.empty and not ema_12.empty and 
-                pd.notna(sma_20.iloc[-1]) and pd.notna(ema_12.iloc[-1])):
-                current_price = float(df['close'].iloc[-1])
-                sma_20_val = float(sma_20.iloc[-1])
-                ema_12_val = float(ema_12.iloc[-1])
+        try:
+            if len(df) >= 20:
+                sma_20 = ta.sma(df['close'], length=20)
+                ema_12 = ta.ema(df['close'], length=12)
                 
-                analysis['moving_averages'] = {
-                    'price': current_price,
-                    'sma_20': round(sma_20_val, 2),
-                    'ema_12': round(ema_12_val, 2)
-                }
-                
-                if current_price > sma_20_val and ema_12_val > sma_20_val:
-                    signals.append(('ma', 'bullish', 0.6, 'Price above SMA20 and EMA12 > SMA20'))
-                elif current_price < sma_20_val and ema_12_val < sma_20_val:
-                    signals.append(('ma', 'bearish', 0.6, 'Price below SMA20 and EMA12 < SMA20'))
-        
-        # 4. Bollinger Bands Analysis
-        if len(df) >= 20:
-            bb_data = ta.bbands(df['close'], length=20, std=2)
-            if bb_data is not None and not bb_data.empty:
-                current_price = float(df['close'].iloc[-1])
-                bb_upper = bb_data['BBU_20_2.0'].iloc[-1]
-                bb_lower = bb_data['BBL_20_2.0'].iloc[-1]
-                bb_middle = bb_data['BBM_20_2.0'].iloc[-1]
-                
-                # Check for None/NaN values before using them
-                if pd.notna(bb_upper) and pd.notna(bb_lower) and pd.notna(bb_middle):
-                    bb_upper = float(bb_upper)
-                    bb_lower = float(bb_lower)
-                    bb_middle = float(bb_middle)
+                if (not sma_20.empty and not ema_12.empty and 
+                    pd.notna(sma_20.iloc[-1]) and pd.notna(ema_12.iloc[-1])):
+                    current_price = float(df['close'].iloc[-1])
+                    sma_20_val = float(sma_20.iloc[-1])
+                    ema_12_val = float(ema_12.iloc[-1])
                     
-                    analysis['bollinger_bands'] = {
-                        'upper': round(bb_upper, 2),
-                        'middle': round(bb_middle, 2),
-                        'lower': round(bb_lower, 2),
-                        'price_position': round((current_price - bb_lower) / (bb_upper - bb_lower), 2)
+                    analysis['moving_averages'] = {
+                        'price': current_price,
+                        'sma_20': round(sma_20_val, 2),
+                        'ema_12': round(ema_12_val, 2)
                     }
                     
-                    if current_price <= bb_lower:
-                        signals.append(('bb', 'bullish', 0.75, 'Price at/below lower Bollinger Band - oversold'))
-                    elif current_price >= bb_upper:
-                        signals.append(('bb', 'bearish', 0.75, 'Price at/above upper Bollinger Band - overbought'))
+                    if current_price > sma_20_val and ema_12_val > sma_20_val:
+                        signals.append(('ma', 'bullish', 0.6, 'Price above SMA20 and EMA12 > SMA20'))
+                    elif current_price < sma_20_val and ema_12_val < sma_20_val:
+                        signals.append(('ma', 'bearish', 0.6, 'Price below SMA20 and EMA12 < SMA20'))
+        except Exception as e:
+            pass  # Skip MA analysis if it fails
+        
+        # 4. Bollinger Bands Analysis
+        try:
+            if len(df) >= 20:
+                bb_data = ta.bbands(df['close'], length=20, std=2)
+                if bb_data is not None and not bb_data.empty:
+                    current_price = float(df['close'].iloc[-1])
+                    bb_upper = bb_data['BBU_20_2.0'].iloc[-1]
+                    bb_lower = bb_data['BBL_20_2.0'].iloc[-1]
+                    bb_middle = bb_data['BBM_20_2.0'].iloc[-1]
+                    
+                    # Check for None/NaN values before using them
+                    if pd.notna(bb_upper) and pd.notna(bb_lower) and pd.notna(bb_middle):
+                        bb_upper = float(bb_upper)
+                        bb_lower = float(bb_lower)
+                        bb_middle = float(bb_middle)
+                        
+                        analysis['bollinger_bands'] = {
+                            'upper': round(bb_upper, 2),
+                            'middle': round(bb_middle, 2),
+                            'lower': round(bb_lower, 2),
+                            'price_position': round((current_price - bb_lower) / (bb_upper - bb_lower), 2)
+                        }
+                        
+                        if current_price <= bb_lower:
+                            signals.append(('bb', 'bullish', 0.75, 'Price at/below lower Bollinger Band - oversold'))
+                        elif current_price >= bb_upper:
+                            signals.append(('bb', 'bearish', 0.75, 'Price at/above upper Bollinger Band - overbought'))
+        except Exception as e:
+            pass  # Skip Bollinger Bands analysis if it fails
         
         # 5. Stochastic Analysis
-        if len(df) >= 14:
-            stoch_data = ta.stoch(df['high'], df['low'], df['close'], k=14, d=3, smooth_k=3)
-            if stoch_data is not None and not stoch_data.empty:
-                stoch_k = stoch_data['STOCHk_14_3_3'].iloc[-1]
-                stoch_d = stoch_data['STOCHd_14_3_3'].iloc[-1]
-                
-                # Check for None/NaN values before using them
-                if pd.notna(stoch_k) and pd.notna(stoch_d):
-                    stoch_k = float(stoch_k)
-                    stoch_d = float(stoch_d)
+        try:
+            if len(df) >= 14:
+                stoch_data = ta.stoch(df['high'], df['low'], df['close'], k=14, d=3, smooth_k=3)
+                if stoch_data is not None and not stoch_data.empty:
+                    stoch_k = stoch_data['STOCHk_14_3_3'].iloc[-1]
+                    stoch_d = stoch_data['STOCHd_14_3_3'].iloc[-1]
                     
-                    analysis['stochastic'] = {'k': round(stoch_k, 2), 'd': round(stoch_d, 2)}
-                    
-                    if stoch_k < 20 and stoch_d < 20:
-                        signals.append(('stoch', 'bullish', 0.7, 'Stochastic oversold - likely reversal up'))
-                    elif stoch_k > 80 and stoch_d > 80:
-                        signals.append(('stoch', 'bearish', 0.7, 'Stochastic overbought - likely reversal down'))
-                    elif stoch_k > stoch_d and stoch_k < 80:
-                        signals.append(('stoch', 'bullish', 0.5, 'Stochastic K above D - bullish momentum'))
-                    elif stoch_k < stoch_d and stoch_k > 20:
-                        signals.append(('stoch', 'bearish', 0.5, 'Stochastic K below D - bearish momentum'))
+                    # Check for None/NaN values before using them
+                    if pd.notna(stoch_k) and pd.notna(stoch_d):
+                        stoch_k = float(stoch_k)
+                        stoch_d = float(stoch_d)
+                        
+                        analysis['stochastic'] = {'k': round(stoch_k, 2), 'd': round(stoch_d, 2)}
+                        
+                        if stoch_k < 20 and stoch_d < 20:
+                            signals.append(('stoch', 'bullish', 0.7, 'Stochastic oversold - likely reversal up'))
+                        elif stoch_k > 80 and stoch_d > 80:
+                            signals.append(('stoch', 'bearish', 0.7, 'Stochastic overbought - likely reversal down'))
+                        elif stoch_k > stoch_d and stoch_k < 80:
+                            signals.append(('stoch', 'bullish', 0.5, 'Stochastic K above D - bullish momentum'))
+                        elif stoch_k < stoch_d and stoch_k > 20:
+                            signals.append(('stoch', 'bearish', 0.5, 'Stochastic K below D - bearish momentum'))
+        except Exception as e:
+            pass  # Skip Stochastic analysis if it fails
         
         # 6. Price Action Analysis
-        if len(df) >= 3:
-            recent_closes = df['close'].tail(3).values
-            recent_highs = df['high'].tail(3).values
-            recent_lows = df['low'].tail(3).values
-            
-            # Check for higher highs/lows or lower highs/lows
-            if recent_highs[-1] > recent_highs[-2] > recent_highs[-3] and recent_lows[-1] > recent_lows[-2]:
-                signals.append(('price_action', 'bullish', 0.6, 'Higher highs and higher lows pattern'))
-            elif recent_highs[-1] < recent_highs[-2] < recent_highs[-3] and recent_lows[-1] < recent_lows[-2]:
-                signals.append(('price_action', 'bearish', 0.6, 'Lower highs and lower lows pattern'))
+        try:
+            if len(df) >= 3:
+                recent_closes = df['close'].tail(3).values
+                recent_highs = df['high'].tail(3).values
+                recent_lows = df['low'].tail(3).values
+                
+                # Check for NaN values before comparison
+                if (pd.notna(recent_highs).all() and pd.notna(recent_lows).all() and 
+                    pd.notna(recent_closes).all()):
+                    # Check for higher highs/lows or lower highs/lows
+                    if recent_highs[-1] > recent_highs[-2] > recent_highs[-3] and recent_lows[-1] > recent_lows[-2]:
+                        signals.append(('price_action', 'bullish', 0.6, 'Higher highs and higher lows pattern'))
+                    elif recent_highs[-1] < recent_highs[-2] < recent_highs[-3] and recent_lows[-1] < recent_lows[-2]:
+                        signals.append(('price_action', 'bearish', 0.6, 'Lower highs and lower lows pattern'))
+        except Exception as e:
+            pass  # Skip price action analysis if it fails
         
         # 7. Volume Analysis (if available)
-        if 'volume' in df.columns and len(df) >= 10:
-            recent_volumes = df['volume'].tail(3).values
-            avg_volume = df['volume'].tail(10).mean()
-            current_volume = recent_volumes[-1]
-            
-            # Check for NaN values in volume data
-            if pd.notna(current_volume) and pd.notna(avg_volume) and avg_volume > 0:
-                analysis['volume'] = {
-                    'current': int(current_volume),
-                    'average_10': int(avg_volume),
-                    'volume_ratio': round(current_volume / avg_volume, 2)
-                }
+        try:
+            if 'volume' in df.columns and len(df) >= 10:
+                recent_volumes = df['volume'].tail(3).values
+                avg_volume = df['volume'].tail(10).mean()
+                current_volume = recent_volumes[-1]
                 
-                # High volume confirms the direction
-                if current_volume > avg_volume * 1.5:
-                    # Volume confirmation signal will be added based on price movement
-                    price_change = (df['close'].iloc[-1] - df['close'].iloc[-2]) / df['close'].iloc[-2]
-                    if price_change > 0:
-                        signals.append(('volume', 'bullish', 0.3, 'High volume confirming upward movement'))
-                    else:
-                        signals.append(('volume', 'bearish', 0.3, 'High volume confirming downward movement'))
+                # Check for NaN values in volume data
+                if pd.notna(current_volume) and pd.notna(avg_volume) and avg_volume > 0:
+                    analysis['volume'] = {
+                        'current': int(current_volume),
+                        'average_10': int(avg_volume),
+                        'volume_ratio': round(current_volume / avg_volume, 2)
+                    }
+                    
+                    # High volume confirms the direction
+                    if current_volume > avg_volume * 1.5:
+                        # Volume confirmation signal will be added based on price movement
+                        prev_close = df['close'].iloc[-2]
+                        curr_close = df['close'].iloc[-1]
+                        
+                        # Check for NaN values before calculating price change
+                        if pd.notna(prev_close) and pd.notna(curr_close) and prev_close != 0:
+                            price_change = (curr_close - prev_close) / prev_close
+                            if price_change > 0:
+                                signals.append(('volume', 'bullish', 0.3, 'High volume confirming upward movement'))
+                            else:
+                                signals.append(('volume', 'bearish', 0.3, 'High volume confirming downward movement'))
+        except Exception as e:
+            pass  # Skip volume analysis if it fails
         
         # 8. Simple Candlestick Pattern Analysis
-        key_patterns = ['doji', 'hammer', 'shooting_star', 'engulfing', 'inside']
-        pattern_signals = calculate_candlestick_patterns(df, key_patterns)
-        
-        pattern_analysis = {}
-        for pattern, signal in pattern_signals.items():
-            if signal != "Not Detected" and not pattern.endswith('_error'):
-                pattern_analysis[pattern] = signal
-                if signal == "Bullish":
-                    signals.append(('pattern', 'bullish', 0.5, f'{pattern.title()} pattern detected'))
-                elif signal == "Bearish":
-                    signals.append(('pattern', 'bearish', 0.5, f'{pattern.title()} pattern detected'))
-        
-        analysis['patterns'] = pattern_analysis
+        try:
+            key_patterns = ['doji', 'hammer', 'shooting_star', 'engulfing', 'inside']
+            pattern_signals = calculate_candlestick_patterns(df, key_patterns)
+            
+            pattern_analysis = {}
+            for pattern, signal in pattern_signals.items():
+                if signal != "Not Detected" and not pattern.endswith('_error'):
+                    pattern_analysis[pattern] = signal
+                    if signal == "Bullish":
+                        signals.append(('pattern', 'bullish', 0.5, f'{pattern.title()} pattern detected'))
+                    elif signal == "Bearish":
+                        signals.append(('pattern', 'bearish', 0.5, f'{pattern.title()} pattern detected'))
+            
+            analysis['patterns'] = pattern_analysis
+        except Exception as e:
+            analysis['patterns'] = {}  # Set empty patterns if it fails
         
         # Calculate overall prediction
         bullish_signals = [s for s in signals if s[1] == 'bullish']
