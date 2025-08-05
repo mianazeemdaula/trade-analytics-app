@@ -1,10 +1,6 @@
-fastapi==0.104.1
-uvicorn==0.24.0
-pandas==2.1.4
-pandas-ta==0.3.14b0
-pydantic==2.5.2
-python-multipart==0.0.6
-requests==2.31.0
-numpy==1.26.4
-setuptools>=40.0.0
-importlib-metadata
+fastapi>=0.104.1
+uvicorn>=0.24.0
+pandas>=2.1.4
+pandas-ta>=0.3.14b0
+pydantic>=2.5.2
+numpy>=1.26.4

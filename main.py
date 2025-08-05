@@ -6,7 +6,7 @@ on financial OHLC data using pandas_ta library.
 """
 
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, field_validator
 from typing import Dict, List, Any, Union, Optional
 import pandas as pd
 import pandas_ta as ta
@@ -31,7 +31,7 @@ class OHLCData(BaseModel):
     close: Union[float, str]
     volume: Optional[Union[float, str]] = None  # Make volume optional
     
-    @validator('open', 'high', 'low', 'close', 'volume', pre=True)
+    @field_validator('open', 'high', 'low', 'close', 'volume')
     def convert_to_float(cls, v):
         """Convert string numbers to float, handle None for volume"""
         if v is None:
@@ -43,7 +43,7 @@ class OHLCData(BaseModel):
                 raise ValueError(f"Cannot convert '{v}' to float")
         return float(v)
     
-    @validator('time', 'datetime', pre=True)
+    @field_validator('time', 'datetime')
     def validate_time_fields(cls, v):
         """Validate time format"""
         if v is None:
@@ -116,7 +116,6 @@ def convert_ohlc_to_dataframe(ohlc_data: List[OHLCData]) -> pd.DataFrame:
     
     # Ensure columns are in the right order and type
     df = df[['open', 'high', 'low', 'close', 'volume']].astype(float)
-    
     return df
 
 def calculate_indicator(df: pd.DataFrame, indicator_name: str, params: List[Union[int, float]]) -> Dict[str, float]:
@@ -221,88 +220,122 @@ def calculate_indicator(df: pd.DataFrame, indicator_name: str, params: List[Unio
 
 def calculate_candlestick_patterns(df: pd.DataFrame, patterns: List[str]) -> Dict[str, Any]:
     """
-    Calculate candlestick patterns using pandas_ta
+    Calculate candlestick patterns using pandas_ta, with robust error handling.
     
     Args:
         df: DataFrame with OHLC data
         patterns: List of pattern names to calculate
         
     Returns:
-        Dictionary with pattern results (last values only)
+        Dictionary with pattern results (last values only). Returns 'Not Detected'
+        for patterns that don't match, and an error message for unsupported patterns.
     """
     result = {}
     
+    # A dictionary to map user-friendly names to pandas_ta's official names
+    # This simplifies the logic and makes it more scalable.
+    pattern_name_map = {
+        'hammer': 'hammer', 'doji': 'doji', 'engulfing': 'engulfing',
+        'harami': 'harami', 'morning_star': 'morningstar', 'morningstar': 'morningstar',
+        'evening_star': 'eveningstar', 'eveningstar': 'eveningstar',
+        'shooting_star': 'shootingstar', 'shootingstar': 'shootingstar',
+        'hanging_man': 'hangingman', 'hangingman': 'hangingman',
+        'inverted_hammer': 'invertedhammer', 'invertedhammer': 'invertedhammer',
+        'dark_cloud_cover': 'darkcloudcover', 'darkcloudcover': 'darkcloudcover',
+        'piercing': 'piercing', 'marubozu': 'marubozu',
+        'spinning_top': 'spinningtop', 'spinningtop': 'spinningtop',
+        'three_white_soldiers': '3whitesoldiers', '3whitesoldiers': '3whitesoldiers',
+        'three_black_crows': '3blackcrows', '3blackcrows': '3blackcrows',
+        'inside': 'inside', 'abandoned_baby': 'abandonedbaby',
+        'dragonfly_doji': 'dragonflydoji', 'dragonflydoji': 'dragonflydoji',
+        'gravestone_doji': 'gravestonedoji', 'gravestonedoji': 'gravestonedoji',
+    }
+
     try:
         for pattern_name in patterns:
-            pattern_lower = pattern_name.lower()
+            pattern_lower = pattern_name.lower().replace(" ", "_")
+            ta_pattern_name = pattern_name_map.get(pattern_lower)
+
+            if not ta_pattern_name:
+                result[pattern_name] = "Pattern Not Supported"
+                continue
+
+            pattern_result = None
             
-            # Handle common pattern name variations
-            if pattern_lower in ['hammer']:
-                pattern_result = ta.cdl_pattern(df['open'], df['high'], df['low'], df['close'], name='hammer')
-            elif pattern_lower in ['doji']:
+            # Special case for Doji and Inside patterns which have dedicated functions.
+            if ta_pattern_name == 'doji':
                 pattern_result = ta.cdl_doji(df['open'], df['high'], df['low'], df['close'])
-            elif pattern_lower in ['engulfing']:
-                pattern_result = ta.cdl_pattern(df['open'], df['high'], df['low'], df['close'], name='engulfing')
-            elif pattern_lower in ['harami']:
-                pattern_result = ta.cdl_pattern(df['open'], df['high'], df['low'], df['close'], name='harami')
-            elif pattern_lower in ['morning_star', 'morningstar']:
-                pattern_result = ta.cdl_pattern(df['open'], df['high'], df['low'], df['close'], name='morningstar')
-            elif pattern_lower in ['evening_star', 'eveningstar']:
-                pattern_result = ta.cdl_pattern(df['open'], df['high'], df['low'], df['close'], name='eveningstar')
-            elif pattern_lower in ['shooting_star', 'shootingstar']:
-                pattern_result = ta.cdl_pattern(df['open'], df['high'], df['low'], df['close'], name='shootingstar')
-            elif pattern_lower in ['hanging_man', 'hangingman']:
-                pattern_result = ta.cdl_pattern(df['open'], df['high'], df['low'], df['close'], name='hangingman')
-            elif pattern_lower in ['inverted_hammer', 'invertedhammer']:
-                pattern_result = ta.cdl_pattern(df['open'], df['high'], df['low'], df['close'], name='invertedhammer')
-            elif pattern_lower in ['dark_cloud_cover', 'darkcloudcover']:
-                pattern_result = ta.cdl_pattern(df['open'], df['high'], df['low'], df['close'], name='darkcloudcover')
-            elif pattern_lower in ['piercing']:
-                pattern_result = ta.cdl_pattern(df['open'], df['high'], df['low'], df['close'], name='piercing')
-            elif pattern_lower in ['marubozu']:
-                pattern_result = ta.cdl_pattern(df['open'], df['high'], df['low'], df['close'], name='marubozu')
-            elif pattern_lower in ['spinning_top', 'spinningtop']:
-                pattern_result = ta.cdl_pattern(df['open'], df['high'], df['low'], df['close'], name='spinningtop')
-            elif pattern_lower in ['three_white_soldiers', '3whitesoldiers']:
-                pattern_result = ta.cdl_pattern(df['open'], df['high'], df['low'], df['close'], name='3whitesoldiers')
-            elif pattern_lower in ['three_black_crows', '3blackcrows']:
-                pattern_result = ta.cdl_pattern(df['open'], df['high'], df['low'], df['close'], name='3blackcrows')
-            elif pattern_lower in ['inside']:
+            elif ta_pattern_name == 'inside':
                 pattern_result = ta.cdl_inside(df['open'], df['high'], df['low'], df['close'])
-            elif pattern_lower in ['dragonfly_doji', 'dragonflydoji']:
-                pattern_result = ta.cdl_pattern(df['open'], df['high'], df['low'], df['close'], name='dragonflydoji')
-            elif pattern_lower in ['gravestone_doji', 'gravestonedoji']:
-                pattern_result = ta.cdl_pattern(df['open'], df['high'], df['low'], df['close'], name='gravestonedoji')
             else:
-                # Try to use the pattern name directly with cdl_pattern
-                if pattern_lower in ta.CDL_PATTERN_NAMES:
-                    pattern_result = ta.cdl_pattern(df['open'], df['high'], df['low'], df['close'], name=pattern_lower)
-                else:
-                    result[f"{pattern_name}_error"] = f"Pattern '{pattern_name}' not supported"
+                # Use the general cdl_pattern function for all others.
+                # This is more efficient and avoids a large if/elif block.
+                try:
+                    pattern_result = ta.cdl_pattern(df['open'], df['high'], df['low'], df['close'], name=ta_pattern_name)
+                except Exception as e:
+                    result[pattern_name] = f"Error: {str(e)}"
                     continue
             
-            # Extract the last value if pattern was calculated successfully
-            # Check if pattern_result is a pandas Series and not empty
-            if hasattr(pattern_result, 'empty') and not pattern_result.empty:
-                last_value = pattern_result.iloc[-1]
-                if pd.notna(last_value):
-                    # Convert pattern signal to readable format
-                    if last_value > 0:
-                        result[pattern_name] = "Bullish"
-                    elif last_value < 0:
-                        result[pattern_name] = "Bearish"
+            # ---- The core fix for pattern detection ----
+            # Handle both Series and DataFrame results from pandas_ta
+            if pattern_result is not None:
+                # Extract the data series
+                if isinstance(pattern_result, pd.DataFrame):
+                    if not pattern_result.empty and len(pattern_result.columns) > 0:
+                        first_col = pattern_result.columns[0]
+                        data_series = pattern_result[first_col]
                     else:
-                        result[pattern_name] = "Neutral"
+                        result[pattern_name] = "Not Detected"
+                        continue
+                elif isinstance(pattern_result, pd.Series):
+                    if not pattern_result.empty:
+                        data_series = pattern_result
+                    else:
+                        result[pattern_name] = "Not Detected"
+                        continue
                 else:
                     result[pattern_name] = "Not Detected"
-            elif pattern_result is None:
-                result[pattern_name] = "Not Detected"
+                    continue
+                
+                # Look for ANY non-zero values in the entire series, not just the last one
+                non_zero_values = data_series[data_series != 0].dropna()
+                
+                if not non_zero_values.empty:
+                    # Count detections by type
+                    bullish_signals = non_zero_values[non_zero_values > 0]
+                    bearish_signals = non_zero_values[non_zero_values < 0]
+                    
+                    bullish_count = len(bullish_signals)
+                    bearish_count = len(bearish_signals)
+                    
+                    # Determine overall signal based on pattern counts and strength
+                    if bullish_count > bearish_count:
+                        # More bullish signals
+                        strongest_signal = bullish_signals.abs().max()
+                        result[pattern_name] = f"Bullish ({bullish_count} signals)"
+                    elif bearish_count > bullish_count:
+                        # More bearish signals  
+                        strongest_signal = bearish_signals.abs().max()
+                        result[pattern_name] = f"Bearish ({bearish_count} signals)"
+                    elif bullish_count == bearish_count and bullish_count > 0:
+                        # Equal signals, use the most recent or strongest
+                        last_signal = non_zero_values.iloc[-1]
+                        if last_signal > 0:
+                            result[pattern_name] = f"Bullish ({bullish_count} signals)"
+                        else:
+                            result[pattern_name] = f"Bearish ({bearish_count} signals)"
+                    else:
+                        result[pattern_name] = "Not Detected"
+                else:
+                    # No non-zero values found
+                    result[pattern_name] = "Not Detected"
             else:
-                # Handle case where pattern_result might be empty Series
+                # If the result is None, the pattern was not detected.
                 result[pattern_name] = "Not Detected"
                 
     except Exception as e:
-        result["patterns_error"] = f"Error calculating patterns: {str(e)}"
+        # A broader catch for any other unexpected errors.
+        result["patterns_error"] = f"A general error occurred: {str(e)}"
 
     return result
 
