@@ -282,28 +282,28 @@ def calculate_candlestick_patterns(df: pd.DataFrame, patterns: List[str]) -> Dic
                     continue
             
             # Extract the last value if pattern was calculated successfully
-            if pattern_result is not None:
-                # Check if it's a Series and not empty
-                if hasattr(pattern_result, 'empty') and not pattern_result.empty:
-                    last_value = pattern_result.iloc[-1]
-                    if pd.notna(last_value):
-                        # Convert pattern signal to readable format
-                        if last_value > 0:
-                            result[pattern_name] = "Bullish"
-                        elif last_value < 0:
-                            result[pattern_name] = "Bearish"
-                        else:
-                            result[pattern_name] = "Neutral"
+            # Check if pattern_result is a pandas Series and not empty
+            if hasattr(pattern_result, 'empty') and not pattern_result.empty:
+                last_value = pattern_result.iloc[-1]
+                if pd.notna(last_value):
+                    # Convert pattern signal to readable format
+                    if last_value > 0:
+                        result[pattern_name] = "Bullish"
+                    elif last_value < 0:
+                        result[pattern_name] = "Bearish"
                     else:
-                        result[pattern_name] = "Not Detected"
+                        result[pattern_name] = "Neutral"
                 else:
                     result[pattern_name] = "Not Detected"
+            elif pattern_result is None:
+                result[pattern_name] = "Not Detected"
             else:
+                # Handle case where pattern_result might be empty Series
                 result[pattern_name] = "Not Detected"
                 
     except Exception as e:
         result["patterns_error"] = f"Error calculating patterns: {str(e)}"
-    
+
     return result
 
 def predict_binary_options(df: pd.DataFrame, prediction_timeframe: int = 2, confidence_threshold: float = 0.6) -> Dict[str, Any]:
