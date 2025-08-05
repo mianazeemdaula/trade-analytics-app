@@ -282,16 +282,20 @@ def calculate_candlestick_patterns(df: pd.DataFrame, patterns: List[str]) -> Dic
                     continue
             
             # Extract the last value if pattern was calculated successfully
-            if pattern_result is not None and not pattern_result.empty:
-                last_value = pattern_result.iloc[-1]
-                if pd.notna(last_value):
-                    # Convert pattern signal to readable format
-                    if last_value > 0:
-                        result[pattern_name] = "Bullish"
-                    elif last_value < 0:
-                        result[pattern_name] = "Bearish"
+            if pattern_result is not None:
+                # Check if it's a Series and not empty
+                if hasattr(pattern_result, 'empty') and not pattern_result.empty:
+                    last_value = pattern_result.iloc[-1]
+                    if pd.notna(last_value):
+                        # Convert pattern signal to readable format
+                        if last_value > 0:
+                            result[pattern_name] = "Bullish"
+                        elif last_value < 0:
+                            result[pattern_name] = "Bearish"
+                        else:
+                            result[pattern_name] = "Neutral"
                     else:
-                        result[pattern_name] = "Neutral"
+                        result[pattern_name] = "Not Detected"
                 else:
                     result[pattern_name] = "Not Detected"
             else:
