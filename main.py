@@ -878,7 +878,7 @@ async def predict_binary_options_endpoint(request: BinaryOptionsRequest):
             "timeframe": f"Next {request.prediction_timeframe} candles"
         }
         
-        return prediction_result
+        return {"signal": prediction_result}
     
     except HTTPException:
         raise
