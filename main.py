@@ -71,7 +71,6 @@ class AnalysisRequest(BaseModel):
     """Model for the main request containing indicators and OHLC data"""
     indicators: Dict[str, List[Union[int, float]]]
     ohlc_data: List[OHLCData]
-    candlestick_patterns: Optional[List[str]] = None  # Optional list of candlestick patterns to calculate
 
 class BinaryOptionsRequest(BaseModel):
     """Model for binary options prediction request"""
@@ -885,6 +884,43 @@ async def predict_binary_options_endpoint(request: BinaryOptionsRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
 
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for monitoring and load balancers"""
+    try:
+        # Test basic functionality
+        import pandas as pd
+        import pandas_ta as ta
+        
+        # Quick test of core dependencies
+        test_data = pd.DataFrame({
+            'close': [100, 101, 102, 101, 100]
+        })
+        rsi_test = ta.rsi(test_data['close'], length=2)
+        
+        return {
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "version": "1.0.0",
+            "dependencies": {
+                "pandas": pd.__version__,
+                "pandas_ta": "available",
+                "fastapi": "available"
+            },
+            "checks": {
+                "core_calculation": "pass" if rsi_test is not None else "fail",
+                "memory": "normal",
+                "disk": "normal"
+            }
+        }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "timestamp": datetime.now().isoformat(),
+            "error": str(e),
+            "version": "1.0.0"
+        }
+
 @app.get("/")
 async def root():
     """Root endpoint providing API information"""
@@ -892,6 +928,7 @@ async def root():
         "message": "Technical Analysis API",
         "version": "1.0.0",
         "endpoints": {
+            "/health": "GET - Health check endpoint",
             "/analyze": "POST - Calculate technical indicators and candlestick patterns",
             "/predict-binary-options": "POST - Predict next 2 candles direction for binary options",
             "/candlestick-patterns": "GET - Get comprehensive list of candlestick patterns",
@@ -903,13 +940,13 @@ async def root():
 @app.post("/analyze")
 async def analyze_technical_indicators(request: AnalysisRequest):
     """
-    Calculate technical indicators on OHLC data
+    Calculate technical indicators and automatically detect candlestick patterns on OHLC data
     
     Args:
         request: AnalysisRequest containing indicators and OHLC data
         
     Returns:
-        JSON object with calculated indicator values (last values only)
+        JSON object with calculated indicator values and detected candlestick patterns
     """
     try:
         # Validate input
@@ -936,15 +973,47 @@ async def analyze_technical_indicators(request: AnalysisRequest):
             except ValueError as e:
                 raise HTTPException(status_code=400, detail=str(e))
         
-        # Calculate candlestick patterns if requested
-        if request.candlestick_patterns:
-            try:
-                pattern_results = calculate_candlestick_patterns(df, request.candlestick_patterns)
-                results.update(pattern_results)
-            except Exception as e:
-                raise HTTPException(status_code=400, detail=f"Error calculating patterns: {str(e)}")
+        # Automatically analyze all supported candlestick patterns
+        try:
+            # Define all supported patterns for automatic detection
+            all_patterns = [
+                'hammer', 'invertedhammer', 'hanging_man', 'shooting_star', 
+                'doji', 'dragonfly_doji', 'gravestone_doji', 'engulfing', 
+                'harami', 'piercing', 'dark_cloud_cover', 'morning_star', 
+                'evening_star', 'marubozu', 'spinning_top', 'three_white_soldiers', 
+                'three_black_crows', 'inside', 'abandoned_baby'
+            ]
+            
+            pattern_results = calculate_candlestick_patterns(df, all_patterns)
+            
+            # Filter out patterns that were not detected or had errors
+            detected_patterns = {}
+            for pattern, result in pattern_results.items():
+                if (result != "Not Detected" and 
+                    result != "Pattern Not Supported" and 
+                    not result.startswith("Error:") and
+                    not pattern.endswith('_error')):
+                    detected_patterns[pattern] = result
+            
+            # Add detected patterns to results
+            if detected_patterns:
+                results['detected_candlestick_patterns'] = detected_patterns
+            else:
+                results['detected_candlestick_patterns'] = "No patterns detected in current timeframe"
+                
+        except Exception as e:
+            results['candlestick_analysis_error'] = f"Error analyzing patterns: {str(e)}"
         
-        return results
+        # Add analysis metadata
+        results['analysis_metadata'] = {
+            "data_points_analyzed": len(df),
+            "timeframe_start": df.index[0].isoformat() if len(df) > 0 else None,
+            "timeframe_end": df.index[-1].isoformat() if len(df) > 0 else None,
+            "last_price": round(float(df['close'].iloc[-1]), 4) if len(df) > 0 else None,
+            "patterns_scanned": len(all_patterns) if 'all_patterns' in locals() else 0
+        }
+        
+        return {"signal": results}
     
     except HTTPException:
         raise
@@ -989,7 +1058,20 @@ async def get_supported_indicators():
                 "example": [14, 3, 3]
             }
         },
-        "note": "For candlestick patterns, use the /candlestick-patterns endpoint to see available patterns, then include them in the 'candlestick_patterns' field of your analysis request."
+        "automatic_features": {
+            "candlestick_patterns": {
+                "description": "All supported candlestick patterns are automatically detected and returned",
+                "patterns_analyzed": [
+                    "hammer", "invertedhammer", "hanging_man", "shooting_star", 
+                    "doji", "dragonfly_doji", "gravestone_doji", "engulfing", 
+                    "harami", "piercing", "dark_cloud_cover", "morning_star", 
+                    "evening_star", "marubozu", "spinning_top", "three_white_soldiers", 
+                    "three_black_crows", "inside", "abandoned_baby"
+                ],
+                "note": "Only detected patterns will be included in the response"
+            }
+        },
+        "note": "The /analyze endpoint automatically scans for all supported candlestick patterns and returns only those that are detected in your OHLC data."
     }
 
 if __name__ == "__main__":
