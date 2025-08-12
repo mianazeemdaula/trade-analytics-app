@@ -516,61 +516,154 @@ def _calculate_order_flow(df: pd.DataFrame, params: List[Union[int, float]]) -> 
 
 
 def _calculate_supply_demand(df: pd.DataFrame, params: List[Union[int, float]]) -> Dict[str, Any]:
-    """Calculate Supply and Demand Zones"""
+    """Calculate Supply and Demand Zones with improved detection"""
     if len(params) != 2:
         raise ValueError("Supply/Demand requires exactly 2 parameters (lookback_period, zone_strength)")
-    lookback, strength = int(params[0]), int(params[1])
+    
+    lookback = int(params[0]) if params[0] > 5 else 20  # Default to 20 if too small
+    min_strength = int(params[1]) if params[1] > 0 else 2  # Default to 2
     
     result = {}
-    if len(df) >= lookback * 2:
-        recent_data = df.tail(lookback * 2)
+    
+    if len(df) < lookback:
+        # Not enough data - return default structure
         current_price = float(df['close'].iloc[-1])
+        result = {
+            'current_price': round(current_price, 2),
+            'nearest_supply_zone': None,
+            'nearest_demand_zone': None,
+            'all_supply_zones': [],
+            'all_demand_zones': []
+        }
+        return result
+    
+    current_price = float(df['close'].iloc[-1])
+    supply_zones = []
+    demand_zones = []
+    
+    # Use more data for better zone detection
+    data_window = df.tail(min(len(df), lookback * 3))
+    
+    # Improved zone detection algorithm
+    for i in range(min_strength, len(data_window) - min_strength):
+        current_row = data_window.iloc[i]
         
-        supply_zones = []
-        demand_zones = []
+        # Look at surrounding candles
+        window_before = data_window.iloc[max(0, i-min_strength):i]
+        window_after = data_window.iloc[i+1:min(len(data_window), i+min_strength+1)]
         
-        # Find supply zones (areas of high selling pressure)
-        for i in range(strength, len(recent_data) - strength):
-            window = recent_data.iloc[i-strength:i+strength+1]
+        current_high = current_row['high']
+        current_low = current_row['low']
+        current_close = current_row['close']
+        current_open = current_row['open']
+        current_volume = current_row['volume']
+        
+        # Supply Zone Detection (Resistance areas)
+        # Check if current high is higher than surrounding highs
+        before_highs = window_before['high'].max() if len(window_before) > 0 else 0
+        after_highs = window_after['high'].max() if len(window_after) > 0 else 0
+        
+        # More lenient supply zone detection
+        if (current_high >= before_highs and current_high >= after_highs and
+            current_volume > data_window['volume'].mean() * 0.8):  # Lower volume threshold
             
-            # Supply zone: high volume with price rejection from highs
-            if (window['high'].iloc[strength] == window['high'].max() and
-                window['volume'].iloc[strength] > window['volume'].mean() * 1.5):
-                
-                zone_high = window['high'].iloc[strength]
-                zone_low = window['close'].iloc[strength]
-                zone_volume = window['volume'].iloc[strength]
-                
-                supply_zones.append({
-                    'high': round(zone_high, 4),
-                    'low': round(zone_low, 4),
-                    'volume': round(zone_volume, 2),
-                    'strength': 'strong' if zone_volume > window['volume'].mean() * 2 else 'moderate'
-                })
+            # Create supply zone
+            zone_high = current_high
+            zone_low = max(current_open, current_close)  # Use body as zone low
             
-            # Demand zone: high volume with price support at lows
-            if (window['low'].iloc[strength] == window['low'].min() and
-                window['volume'].iloc[strength] > window['volume'].mean() * 1.5):
-                
-                zone_low = window['low'].iloc[strength]
-                zone_high = window['close'].iloc[strength]
-                zone_volume = window['volume'].iloc[strength]
-                
-                demand_zones.append({
-                    'low': round(zone_low, 4),
-                    'high': round(zone_high, 4),
-                    'volume': round(zone_volume, 2),
-                    'strength': 'strong' if zone_volume > window['volume'].mean() * 2 else 'moderate'
-                })
+            # Calculate zone strength based on volume and price rejection
+            rejection = (current_high - current_close) / current_high if current_high > 0 else 0
+            volume_strength = current_volume / data_window['volume'].mean()
+            
+            strength_score = (rejection * 100) + (volume_strength * 50)
+            strength_level = 'strong' if strength_score > 100 else 'moderate' if strength_score > 50 else 'weak'
+            
+            supply_zones.append({
+                'high': round(zone_high, 2),
+                'low': round(zone_low, 2),
+                'volume': round(current_volume, 0),
+                'strength': strength_level,
+                'distance_from_current': abs(zone_low - current_price)
+            })
         
-        # Sort by proximity to current price
-        supply_zones.sort(key=lambda x: abs(x['low'] - current_price))
-        demand_zones.sort(key=lambda x: abs(x['high'] - current_price))
+        # Demand Zone Detection (Support areas)
+        # Check if current low is lower than surrounding lows
+        before_lows = window_before['low'].min() if len(window_before) > 0 else float('inf')
+        after_lows = window_after['low'].min() if len(window_after) > 0 else float('inf')
         
-        result['current_price'] = round(current_price, 4)
-        result['nearest_supply_zone'] = supply_zones[0] if supply_zones else None
-        result['nearest_demand_zone'] = demand_zones[0] if demand_zones else None
-        result['all_supply_zones'] = supply_zones[:3]
-        result['all_demand_zones'] = demand_zones[:3]
+        # More lenient demand zone detection
+        if (current_low <= before_lows and current_low <= after_lows and
+            current_volume > data_window['volume'].mean() * 0.8):  # Lower volume threshold
+            
+            # Create demand zone
+            zone_low = current_low
+            zone_high = min(current_open, current_close)  # Use body as zone high
+            
+            # Calculate zone strength
+            bounce = (current_close - current_low) / current_close if current_close > 0 else 0
+            volume_strength = current_volume / data_window['volume'].mean()
+            
+            strength_score = (bounce * 100) + (volume_strength * 50)
+            strength_level = 'strong' if strength_score > 100 else 'moderate' if strength_score > 50 else 'weak'
+            
+            demand_zones.append({
+                'low': round(zone_low, 2),
+                'high': round(zone_high, 2),
+                'volume': round(current_volume, 0),
+                'strength': strength_level,
+                'distance_from_current': abs(zone_high - current_price)
+            })
+    
+    # Remove duplicate zones (zones too close to each other)
+    def remove_duplicates(zones, min_distance_pct=0.01):
+        if not zones:
+            return zones
+        
+        unique_zones = []
+        for zone in zones:
+            is_duplicate = False
+            zone_center = (zone['high'] + zone['low']) / 2
+            
+            for existing in unique_zones:
+                existing_center = (existing['high'] + existing['low']) / 2
+                distance_pct = abs(zone_center - existing_center) / existing_center
+                
+                if distance_pct < min_distance_pct:
+                    is_duplicate = True
+                    break
+            
+            if not is_duplicate:
+                unique_zones.append(zone)
+        
+        return unique_zones
+    
+    # Clean up zones
+    supply_zones = remove_duplicates(supply_zones)
+    demand_zones = remove_duplicates(demand_zones)
+    
+    # Sort by distance from current price
+    supply_zones.sort(key=lambda x: x['distance_from_current'])
+    demand_zones.sort(key=lambda x: x['distance_from_current'])
+    
+    # Build result
+    result = {
+        'current_price': round(current_price, 2),
+        'nearest_supply_zone': supply_zones[0] if supply_zones else None,
+        'nearest_demand_zone': demand_zones[0] if demand_zones else None,
+        'all_supply_zones': supply_zones[:5],  # Top 5 zones
+        'all_demand_zones': demand_zones[:5]   # Top 5 zones
+    }
+    
+    # Remove distance field from final output (internal use only)
+    for zone_list in [result['all_supply_zones'], result['all_demand_zones']]:
+        for zone in zone_list:
+            zone.pop('distance_from_current', None)
+    
+    if result['nearest_supply_zone']:
+        result['nearest_supply_zone'].pop('distance_from_current', None)
+    if result['nearest_demand_zone']:
+        result['nearest_demand_zone'].pop('distance_from_current', None)
+    
+    return result
     
     return result
