@@ -209,6 +209,15 @@ def calculate_indicator(df: pd.DataFrame, indicator_name: str, params: List[Unio
                 if d_col in stoch_data.columns:
                     result['stoch_d'] = round(float(stoch_data[d_col].iloc[-1]), 2)
         
+        elif indicator_name.lower() == 'atr':
+            # ATR - Average True Range
+            if len(params) != 1:
+                raise ValueError("ATR requires exactly 1 parameter (period)")
+            period = int(params[0])
+            atr_values = ta.atr(df['high'], df['low'], df['close'], length=period)
+            if not atr_values.empty:
+                result['atr'] = round(float(atr_values.iloc[-1]), 4)
+        
         else:
             raise ValueError(f"Unsupported indicator: {indicator_name}")
             
@@ -1056,6 +1065,12 @@ async def get_supported_indicators():
                 "name": "Stochastic Oscillator",
                 "parameters": ["k (int)", "d (int)", "smooth_k (int)"],
                 "example": [14, 3, 3]
+            },
+            "atr": {
+                "name": "Average True Range",
+                "parameters": ["period (int)"],
+                "example": [14],
+                "description": "Measures market volatility by decomposing the entire range of an asset price for a given period"
             }
         },
         "automatic_features": {
