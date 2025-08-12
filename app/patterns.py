@@ -10,127 +10,153 @@ warnings.filterwarnings("ignore", message="pkg_resources is deprecated")
 warnings.filterwarnings("ignore", category=UserWarning, module="pandas_ta")
 os.environ['PYTHONWARNINGS'] = 'ignore::UserWarning:pandas_ta'
 
-from typing import Dict, List
+from typing import Dict, List, Any
 import pandas as pd
 import pandas_ta as ta
 
 
-def calculate_candlestick_patterns(df: pd.DataFrame) -> Dict[str, bool]:
+def calculate_candlestick_patterns(df: pd.DataFrame, patterns: List[str] = None) -> Dict[str, Any]:
     """
-    Calculate various candlestick patterns using pandas_ta
+    Calculate candlestick patterns using pandas_ta, with robust error handling.
     
     Args:
         df: DataFrame with OHLC data
+        patterns: List of pattern names to calculate (if None, uses default set)
         
     Returns:
-        Dictionary with pattern names and boolean values
+        Dictionary with pattern results (last values only). Returns 'Not Detected'
+        for patterns that don't match, and an error message for unsupported patterns.
     """
-    patterns = {}
+    from typing import List, Any
     
+    result = {}
+
+    # A dictionary to map user-friendly names to pandas_ta's official names
+    # This simplifies the logic and makes it more scalable.
+    pattern_name_map = {
+        'hammer': 'hammer', 'doji': 'doji', 'engulfing': 'engulfing',
+        'harami': 'harami', 'morning_star': 'morningstar', 'morningstar': 'morningstar',
+        'evening_star': 'eveningstar', 'eveningstar': 'eveningstar',
+        'shooting_star': 'shootingstar', 'shootingstar': 'shootingstar',
+        'hanging_man': 'hangingman', 'hangingman': 'hangingman',
+        'inverted_hammer': 'invertedhammer', 'invertedhammer': 'invertedhammer',
+        'dark_cloud_cover': 'darkcloudcover', 'darkcloudcover': 'darkcloudcover',
+        'piercing': 'piercing', 'marubozu': 'marubozu',
+        'spinning_top': 'spinningtop', 'spinningtop': 'spinningtop',
+        'three_white_soldiers': '3whitesoldiers', '3whitesoldiers': '3whitesoldiers',
+        'three_black_crows': '3blackcrows', '3blackcrows': '3blackcrows',
+        'inside': 'inside', 'abandoned_baby': 'abandonedbaby',
+        'dragonfly_doji': 'dragonflydoji', 'dragonflydoji': 'dragonflydoji',
+        'gravestone_doji': 'gravestonedoji', 'gravestonedoji': 'gravestonedoji',
+        'long_legged_doji': 'longleggeddoji', 'longleggeddoji': 'longleggeddoji',
+    }
+    
+    # Default patterns if none specified
+    if patterns is None:
+        patterns = [
+            'doji', 'hammer', 'shootingstar', 'engulfing', 'harami',
+            'morningstar', 'eveningstar', '3whitesoldiers', '3blackcrows',
+            'darkcloudcover', 'piercing', 'hangingman', 'invertedhammer',
+            'spinningtop', 'marubozu', 'dragonflydoji', 'gravestonedoji',
+            'longleggeddoji', 'inside'
+        ]
+
     try:
-        # Doji pattern
-        doji = ta.cdl_doji(df['open'], df['high'], df['low'], df['close'])
-        patterns['doji'] = bool(doji.iloc[-1]) if not doji.empty else False
-        
-        # Hammer pattern
-        hammer = ta.cdl_hammer(df['open'], df['high'], df['low'], df['close'])
-        patterns['hammer'] = bool(hammer.iloc[-1]) if not hammer.empty else False
-        
-        # Shooting Star pattern
-        shooting_star = ta.cdl_shootingstar(df['open'], df['high'], df['low'], df['close'])
-        patterns['shooting_star'] = bool(shooting_star.iloc[-1]) if not shooting_star.empty else False
-        
-        # Engulfing patterns
-        engulfing = ta.cdl_engulfing(df['open'], df['high'], df['low'], df['close'])
-        if not engulfing.empty:
-            last_engulfing = engulfing.iloc[-1]
-            patterns['bullish_engulfing'] = bool(last_engulfing > 0)
-            patterns['bearish_engulfing'] = bool(last_engulfing < 0)
-        else:
-            patterns['bullish_engulfing'] = False
-            patterns['bearish_engulfing'] = False
-        
-        # Harami patterns
-        harami = ta.cdl_harami(df['open'], df['high'], df['low'], df['close'])
-        if not harami.empty:
-            last_harami = harami.iloc[-1]
-            patterns['bullish_harami'] = bool(last_harami > 0)
-            patterns['bearish_harami'] = bool(last_harami < 0)
-        else:
-            patterns['bullish_harami'] = False
-            patterns['bearish_harami'] = False
-        
-        # Morning Star pattern
-        morning_star = ta.cdl_morningstar(df['open'], df['high'], df['low'], df['close'])
-        patterns['morning_star'] = bool(morning_star.iloc[-1]) if not morning_star.empty else False
-        
-        # Evening Star pattern
-        evening_star = ta.cdl_eveningstar(df['open'], df['high'], df['low'], df['close'])
-        patterns['evening_star'] = bool(evening_star.iloc[-1]) if not evening_star.empty else False
-        
-        # Three White Soldiers pattern
-        three_white_soldiers = ta.cdl_3whitesoldiers(df['open'], df['high'], df['low'], df['close'])
-        patterns['three_white_soldiers'] = bool(three_white_soldiers.iloc[-1]) if not three_white_soldiers.empty else False
-        
-        # Three Black Crows pattern
-        three_black_crows = ta.cdl_3blackcrows(df['open'], df['high'], df['low'], df['close'])
-        patterns['three_black_crows'] = bool(three_black_crows.iloc[-1]) if not three_black_crows.empty else False
-        
-        # Dark Cloud Cover pattern
-        dark_cloud_cover = ta.cdl_darkcloudcover(df['open'], df['high'], df['low'], df['close'])
-        patterns['dark_cloud_cover'] = bool(dark_cloud_cover.iloc[-1]) if not dark_cloud_cover.empty else False
-        
-        # Piercing Line pattern
-        piercing = ta.cdl_piercing(df['open'], df['high'], df['low'], df['close'])
-        patterns['piercing_line'] = bool(piercing.iloc[-1]) if not piercing.empty else False
-        
-        # Hanging Man pattern
-        hanging_man = ta.cdl_hangingman(df['open'], df['high'], df['low'], df['close'])
-        patterns['hanging_man'] = bool(hanging_man.iloc[-1]) if not hanging_man.empty else False
-        
-        # Inverted Hammer pattern
-        inverted_hammer = ta.cdl_invertedhammer(df['open'], df['high'], df['low'], df['close'])
-        patterns['inverted_hammer'] = bool(inverted_hammer.iloc[-1]) if not inverted_hammer.empty else False
-        
-        # Spinning Top pattern
-        spinning_top = ta.cdl_spinningtop(df['open'], df['high'], df['low'], df['close'])
-        patterns['spinning_top'] = bool(spinning_top.iloc[-1]) if not spinning_top.empty else False
-        
-        # Marubozu patterns
-        marubozu = ta.cdl_marubozu(df['open'], df['high'], df['low'], df['close'])
-        if not marubozu.empty:
-            last_marubozu = marubozu.iloc[-1]
-            patterns['bullish_marubozu'] = bool(last_marubozu > 0)
-            patterns['bearish_marubozu'] = bool(last_marubozu < 0)
-        else:
-            patterns['bullish_marubozu'] = False
-            patterns['bearish_marubozu'] = False
-        
-        # Dragonfly Doji pattern
-        dragonfly_doji = ta.cdl_dragonflydoji(df['open'], df['high'], df['low'], df['close'])
-        patterns['dragonfly_doji'] = bool(dragonfly_doji.iloc[-1]) if not dragonfly_doji.empty else False
-        
-        # Gravestone Doji pattern
-        gravestone_doji = ta.cdl_gravestonedoji(df['open'], df['high'], df['low'], df['close'])
-        patterns['gravestone_doji'] = bool(gravestone_doji.iloc[-1]) if not gravestone_doji.empty else False
-        
-        # Long Legged Doji pattern
-        long_legged_doji = ta.cdl_longleggeddoji(df['open'], df['high'], df['low'], df['close'])
-        patterns['long_legged_doji'] = bool(long_legged_doji.iloc[-1]) if not long_legged_doji.empty else False
-        
-        # Four Price Doji pattern (all prices equal)
-        four_price_doji = ta.cdl_4price(df['open'], df['high'], df['low'], df['close'])
-        patterns['four_price_doji'] = bool(four_price_doji.iloc[-1]) if not four_price_doji.empty else False
-        
+        for pattern_name in patterns:
+            pattern_lower = pattern_name.lower().replace(" ", "_")
+            ta_pattern_name = pattern_name_map.get(pattern_lower)
+
+            if not ta_pattern_name:
+                result[pattern_name] = "Pattern Not Supported"
+                continue
+
+            pattern_result = None
+
+            # Special case for Doji and Inside patterns which have dedicated functions.
+            if ta_pattern_name == 'doji':
+                pattern_result = ta.cdl_doji(df['open'], df['high'], df['low'], df['close'])
+            elif ta_pattern_name == 'inside':
+                pattern_result = ta.cdl_inside(df['open'], df['high'], df['low'], df['close'])
+            else:
+                # Use the general cdl_pattern function for all others.
+                # This is more efficient and avoids a large if/elif block.
+                try:
+                    pattern_result = ta.cdl_pattern(
+                        open_=df['open'], 
+                        high=df['high'], 
+                        low=df['low'], 
+                        close=df['close'], 
+                        name=ta_pattern_name
+                    )
+                except Exception as e:
+                    result[pattern_name] = f"Error: {str(e)}"
+                    continue
+
+            # ---- The core fix for pattern detection ----
+            # Handle both Series and DataFrame results from pandas_ta
+            if pattern_result is not None:
+                # Extract the data series
+                if isinstance(pattern_result, pd.DataFrame):
+                    if not pattern_result.empty and len(pattern_result.columns) > 0:
+                        first_col = pattern_result.columns[0]
+                        data_series = pattern_result[first_col]
+                    else:
+                        result[pattern_name] = "Not Detected"
+                        continue
+                elif isinstance(pattern_result, pd.Series):
+                    if not pattern_result.empty:
+                        data_series = pattern_result
+                    else:
+                        result[pattern_name] = "Not Detected"
+                        continue
+                else:
+                    result[pattern_name] = "Not Detected"
+                    continue
+
+                # Look for ANY non-zero values in the entire series, not just the last one
+                non_zero_values = data_series[data_series != 0].dropna()
+
+                if not non_zero_values.empty:
+                    # Count detections by type
+                    bullish_signals = non_zero_values[non_zero_values > 0]
+                    bearish_signals = non_zero_values[non_zero_values < 0]
+
+                    bullish_count = len(bullish_signals)
+                    bearish_count = len(bearish_signals)
+
+                    # Determine overall signal based on pattern counts and strength
+                    if bullish_count > bearish_count:
+                        # More bullish signals
+                        strongest_signal = bullish_signals.abs().max()
+                        result[pattern_name] = f"Bullish ({bullish_count} signals)"
+                    elif bearish_count > bullish_count:
+                        # More bearish signals  
+                        strongest_signal = bearish_signals.abs().max()
+                        result[pattern_name] = f"Bearish ({bearish_count} signals)"
+                    elif bullish_count == bearish_count and bullish_count > 0:
+                        # Equal signals, use the most recent or strongest
+                        last_signal = non_zero_values.iloc[-1]
+                        if last_signal > 0:
+                            result[pattern_name] = f"Bullish ({bullish_count} signals)"
+                        else:
+                            result[pattern_name] = f"Bearish ({bearish_count} signals)"
+                    else:
+                        result[pattern_name] = "Not Detected"
+                else:
+                    # No non-zero values found
+                    result[pattern_name] = "Not Detected"
+            else:
+                # If the result is None, the pattern was not detected.
+                result[pattern_name] = "Not Detected"
+
     except Exception as e:
-        # If any pattern calculation fails, return empty patterns dict
-        print(f"Error calculating candlestick patterns: {str(e)}")
-        patterns = {}
-    
-    return patterns
+        # A broader catch for any other unexpected errors.
+        result["patterns_error"] = f"A general error occurred: {str(e)}"
+
+    return result
 
 
-def get_pattern_interpretation(patterns: Dict[str, bool]) -> Dict[str, str]:
+def get_pattern_interpretation(patterns: Dict[str, str]) -> Dict[str, str]:
     """
     Get interpretations for detected patterns
     
@@ -146,35 +172,32 @@ def get_pattern_interpretation(patterns: Dict[str, bool]) -> Dict[str, str]:
         'doji': 'Indecision - market uncertainty, potential reversal signal',
         'hammer': 'Bullish reversal - strong buying pressure after decline',
         'shooting_star': 'Bearish reversal - selling pressure after advance',
-        'bullish_engulfing': 'Strong bullish reversal - buyers overwhelm sellers',
-        'bearish_engulfing': 'Strong bearish reversal - sellers overwhelm buyers',
-        'bullish_harami': 'Bullish reversal - weakening selling pressure',
-        'bearish_harami': 'Bearish reversal - weakening buying pressure',
+        'engulfing': 'Strong reversal - buyers/sellers overwhelm opposite side',
+        'harami': 'Reversal - weakening pressure from current trend',
         'morning_star': 'Strong bullish reversal - three-candle pattern',
         'evening_star': 'Strong bearish reversal - three-candle pattern',
         'three_white_soldiers': 'Strong bullish continuation - sustained buying',
         'three_black_crows': 'Strong bearish continuation - sustained selling',
         'dark_cloud_cover': 'Bearish reversal - selling pressure emerges',
-        'piercing_line': 'Bullish reversal - buying pressure emerges',
+        'piercing': 'Bullish reversal - buying pressure emerges',
         'hanging_man': 'Bearish reversal - selling pressure after advance',
         'inverted_hammer': 'Bullish reversal - potential buying interest',
         'spinning_top': 'Indecision - small body with long wicks',
-        'bullish_marubozu': 'Strong bullish sentiment - no wicks, strong buying',
-        'bearish_marubozu': 'Strong bearish sentiment - no wicks, strong selling',
+        'marubozu': 'Strong sentiment - no wicks, strong directional pressure',
         'dragonfly_doji': 'Bullish reversal - long lower wick, buying support',
         'gravestone_doji': 'Bearish reversal - long upper wick, selling pressure',
         'long_legged_doji': 'High indecision - long wicks both sides',
-        'four_price_doji': 'Extreme indecision - all prices equal'
+        'inside': 'Consolidation - contained within previous candle range'
     }
     
-    for pattern, detected in patterns.items():
-        if detected and pattern in pattern_meanings:
-            interpretations[pattern] = pattern_meanings[pattern]
+    for pattern, status in patterns.items():
+        if pattern in pattern_meanings and status != "Not Detected" and not status.startswith("Error"):
+            interpretations[pattern] = f"{pattern_meanings[pattern]} - {status}"
     
     return interpretations
 
 
-def get_pattern_signals(patterns: Dict[str, bool]) -> Dict[str, str]:
+def get_pattern_signals(patterns: Dict[str, str]) -> Dict[str, Any]:
     """
     Get trading signals based on detected patterns
     
@@ -194,33 +217,32 @@ def get_pattern_signals(patterns: Dict[str, bool]) -> Dict[str, str]:
     }
     
     bullish_patterns = [
-        'hammer', 'bullish_engulfing', 'bullish_harami', 'morning_star',
-        'three_white_soldiers', 'piercing_line', 'inverted_hammer',
-        'bullish_marubozu', 'dragonfly_doji'
+        'hammer', 'morning_star', 'three_white_soldiers', 'piercing',
+        'inverted_hammer', 'dragonfly_doji'
     ]
     
     bearish_patterns = [
-        'shooting_star', 'bearish_engulfing', 'bearish_harami', 'evening_star',
-        'three_black_crows', 'dark_cloud_cover', 'hanging_man',
-        'bearish_marubozu', 'gravestone_doji'
+        'shooting_star', 'evening_star', 'three_black_crows', 
+        'dark_cloud_cover', 'hanging_man', 'gravestone_doji'
     ]
     
     neutral_patterns = [
-        'doji', 'spinning_top', 'long_legged_doji', 'four_price_doji'
+        'doji', 'spinning_top', 'long_legged_doji', 'inside'
     ]
     
     bullish_count = 0
     bearish_count = 0
     neutral_count = 0
     
-    for pattern, detected in patterns.items():
-        if detected:
+    for pattern, status in patterns.items():
+        if status != "Not Detected" and not status.startswith("Error") and not status.startswith("Pattern Not Supported"):
             signals['detected_patterns'].append(pattern)
             
-            if pattern in bullish_patterns:
+            # Check if it's explicitly bullish or bearish in the status
+            if "Bullish" in status or pattern in bullish_patterns:
                 signals['bullish_patterns'].append(pattern)
                 bullish_count += 1
-            elif pattern in bearish_patterns:
+            elif "Bearish" in status or pattern in bearish_patterns:
                 signals['bearish_patterns'].append(pattern)
                 bearish_count += 1
             elif pattern in neutral_patterns:
