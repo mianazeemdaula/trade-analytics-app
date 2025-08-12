@@ -124,22 +124,62 @@ def calculate_candlestick_patterns(df: pd.DataFrame, patterns: List[str] = None)
                     bullish_count = len(bullish_signals)
                     bearish_count = len(bearish_signals)
 
+                    # Get timestamps where patterns occurred
+                    pattern_timestamps = []
+                    for idx, value in non_zero_values.items():
+                        timestamp_str = idx.strftime('%Y-%m-%d %H:%M:%S') if hasattr(idx, 'strftime') else str(idx)
+                        direction = "Bullish" if value > 0 else "Bearish"
+                        pattern_timestamps.append({
+                            "timestamp": timestamp_str,
+                            "direction": direction,
+                            "strength": abs(value)
+                        })
+
                     # Determine overall signal based on pattern counts and strength
                     if bullish_count > bearish_count:
                         # More bullish signals
                         strongest_signal = bullish_signals.abs().max()
-                        result[pattern_name] = f"Bullish ({bullish_count} signals)"
+                        result[pattern_name] = {
+                            "status": f"Bullish ({bullish_count} signals)",
+                            "total_signals": bullish_count + bearish_count,
+                            "bullish_count": bullish_count,
+                            "bearish_count": bearish_count,
+                            "strongest_signal": float(strongest_signal),
+                            "occurrences": pattern_timestamps
+                        }
                     elif bearish_count > bullish_count:
                         # More bearish signals  
                         strongest_signal = bearish_signals.abs().max()
-                        result[pattern_name] = f"Bearish ({bearish_count} signals)"
+                        result[pattern_name] = {
+                            "status": f"Bearish ({bearish_count} signals)",
+                            "total_signals": bullish_count + bearish_count,
+                            "bullish_count": bullish_count,
+                            "bearish_count": bearish_count,
+                            "strongest_signal": float(strongest_signal),
+                            "occurrences": pattern_timestamps
+                        }
                     elif bullish_count == bearish_count and bullish_count > 0:
                         # Equal signals, use the most recent or strongest
                         last_signal = non_zero_values.iloc[-1]
+                        strongest_signal = non_zero_values.abs().max()
                         if last_signal > 0:
-                            result[pattern_name] = f"Bullish ({bullish_count} signals)"
+                            result[pattern_name] = {
+                                "status": f"Bullish ({bullish_count} signals)",
+                                "total_signals": bullish_count + bearish_count,
+                                "bullish_count": bullish_count,
+                                "bearish_count": bearish_count,
+                                "strongest_signal": float(strongest_signal),
+                                "occurrences": pattern_timestamps
+                            }
                         else:
-                            result[pattern_name] = f"Bearish ({bearish_count} signals)"
+                            result[pattern_name] = {
+                                "status": f"Bearish ({bearish_count} signals)",
+                                "total_signals": bullish_count + bearish_count,
+                                "bullish_count": bullish_count,
+                                "bearish_count": bearish_count,
+                                "strongest_signal": float(strongest_signal),
+                                "occurrences": pattern_timestamps
+                            }
                     else:
                         result[pattern_name] = "Not Detected"
                 else:
@@ -156,12 +196,12 @@ def calculate_candlestick_patterns(df: pd.DataFrame, patterns: List[str] = None)
     return result
 
 
-def get_pattern_interpretation(patterns: Dict[str, str]) -> Dict[str, str]:
+def get_pattern_interpretation(patterns: Dict[str, Any]) -> Dict[str, str]:
     """
     Get interpretations for detected patterns
     
     Args:
-        patterns: Dictionary of pattern names and their detection status
+        patterns: Dictionary of pattern names and their detection status/details
         
     Returns:
         Dictionary of detected patterns with their interpretations
@@ -190,19 +230,30 @@ def get_pattern_interpretation(patterns: Dict[str, str]) -> Dict[str, str]:
         'inside': 'Consolidation - contained within previous candle range'
     }
     
-    for pattern, status in patterns.items():
-        if pattern in pattern_meanings and status != "Not Detected" and not status.startswith("Error"):
-            interpretations[pattern] = f"{pattern_meanings[pattern]} - {status}"
+    for pattern, data in patterns.items():
+        if pattern in pattern_meanings:
+            # Handle both old string format and new detailed format
+            if isinstance(data, dict) and 'status' in data:
+                status = data['status']
+                timestamps = data.get('occurrences', [])
+                if status != "Not Detected" and not status.startswith("Error"):
+                    interpretation = f"{pattern_meanings[pattern]} - {status}"
+                    if timestamps:
+                        latest = timestamps[-1]['timestamp']
+                        interpretation += f" (Latest: {latest})"
+                    interpretations[pattern] = interpretation
+            elif isinstance(data, str) and data != "Not Detected" and not data.startswith("Error") and not data.startswith("Pattern Not Supported"):
+                interpretations[pattern] = f"{pattern_meanings[pattern]} - {data}"
     
     return interpretations
 
 
-def get_pattern_signals(patterns: Dict[str, str]) -> Dict[str, Any]:
+def get_pattern_signals(patterns: Dict[str, Any]) -> Dict[str, Any]:
     """
     Get trading signals based on detected patterns
     
     Args:
-        patterns: Dictionary of pattern names and their detection status
+        patterns: Dictionary of pattern names and their detection status/details
         
     Returns:
         Dictionary with signal strength and direction
@@ -213,7 +264,9 @@ def get_pattern_signals(patterns: Dict[str, str]) -> Dict[str, Any]:
         'detected_patterns': [],
         'bullish_patterns': [],
         'bearish_patterns': [],
-        'neutral_patterns': []
+        'neutral_patterns': [],
+        'total_occurrences': 0,
+        'recent_patterns': []  # Last 5 pattern occurrences with timestamps
     }
     
     bullish_patterns = [
@@ -233,22 +286,63 @@ def get_pattern_signals(patterns: Dict[str, str]) -> Dict[str, Any]:
     bullish_count = 0
     bearish_count = 0
     neutral_count = 0
+    all_occurrences = []
     
-    for pattern, status in patterns.items():
-        if status != "Not Detected" and not status.startswith("Error") and not status.startswith("Pattern Not Supported"):
+    for pattern, data in patterns.items():
+        detected = False
+        pattern_occurrences = []
+        
+        # Handle both old string format and new detailed format
+        if isinstance(data, dict) and 'status' in data:
+            status = data['status']
+            if status != "Not Detected" and not status.startswith("Error") and not status.startswith("Pattern Not Supported"):
+                detected = True
+                signals['total_occurrences'] += data.get('total_signals', 0)
+                pattern_occurrences = data.get('occurrences', [])
+        elif isinstance(data, str) and data != "Not Detected" and not data.startswith("Error") and not data.startswith("Pattern Not Supported"):
+            detected = True
+            
+        if detected:
             signals['detected_patterns'].append(pattern)
             
-            # Check if it's explicitly bullish or bearish in the status
-            if "Bullish" in status or pattern in bullish_patterns:
-                signals['bullish_patterns'].append(pattern)
-                bullish_count += 1
-            elif "Bearish" in status or pattern in bearish_patterns:
-                signals['bearish_patterns'].append(pattern)
-                bearish_count += 1
-            elif pattern in neutral_patterns:
-                signals['neutral_patterns'].append(pattern)
-                neutral_count += 1
+            # Add to recent patterns with details
+            for occurrence in pattern_occurrences:
+                all_occurrences.append({
+                    'pattern': pattern,
+                    'timestamp': occurrence['timestamp'],
+                    'direction': occurrence['direction'],
+                    'strength': occurrence['strength']
+                })
+            
+            # Check if it's explicitly bullish or bearish in the status or pattern type
+            if isinstance(data, dict) and 'status' in data:
+                if "Bullish" in data['status'] or pattern in bullish_patterns:
+                    signals['bullish_patterns'].append(pattern)
+                    bullish_count += 1
+                elif "Bearish" in data['status'] or pattern in bearish_patterns:
+                    signals['bearish_patterns'].append(pattern)
+                    bearish_count += 1
+                elif pattern in neutral_patterns:
+                    signals['neutral_patterns'].append(pattern)
+                    neutral_count += 1
+            else:
+                # Fallback for string format
+                if "Bullish" in str(data) or pattern in bullish_patterns:
+                    signals['bullish_patterns'].append(pattern)
+                    bullish_count += 1
+                elif "Bearish" in str(data) or pattern in bearish_patterns:
+                    signals['bearish_patterns'].append(pattern)
+                    bearish_count += 1
+                elif pattern in neutral_patterns:
+                    signals['neutral_patterns'].append(pattern)
+                    neutral_count += 1
     
+    # Sort occurrences by timestamp and take the most recent 10
+    if all_occurrences:
+        # Sort by timestamp (most recent first)
+        all_occurrences.sort(key=lambda x: x['timestamp'], reverse=True)
+        signals['recent_patterns'] = all_occurrences[:10]
+
     # Determine overall signal
     if bullish_count > bearish_count:
         signals['overall_signal'] = 'bullish'
