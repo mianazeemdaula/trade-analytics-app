@@ -39,45 +39,43 @@ async def analyze_indicators(request: AnalysisRequest) -> Dict[str, Any]:
     """
     try:
         # Convert OHLC data to DataFrame
-        df = convert_ohlc_to_dataframe(request.data)
+        df = convert_ohlc_to_dataframe(request.ohlc_data)
         
         results = {}
         
         # Calculate each requested indicator
-        for indicator_request in request.indicators:
-            indicator_name = indicator_request.name.lower()
-            params = indicator_request.params
+        for indicator_name, params in request.indicators.items():
             
             try:
                 # Handle indicator aliases
-                if indicator_name in ['bollinger', 'bollinger_bands']:
+                if indicator_name.lower() in ['bollinger', 'bollinger_bands']:
                     indicator_name = 'bb'
-                elif indicator_name in ['stochastic']:
+                elif indicator_name.lower() in ['stochastic']:
                     indicator_name = 'stoch'
-                elif indicator_name in ['stochastic_rsi']:
+                elif indicator_name.lower() in ['stochastic_rsi']:
                     indicator_name = 'stoch_rsi'
-                elif indicator_name in ['fibonacci', 'fib_retracements']:
+                elif indicator_name.lower() in ['fibonacci', 'fib_retracements']:
                     indicator_name = 'fibonacci'
-                elif indicator_name in ['volume_ma', 'volume_moving_average']:
+                elif indicator_name.lower() in ['volume_ma', 'volume_moving_average']:
                     indicator_name = 'volume_ma'
-                elif indicator_name in ['volume_profile', 'vp']:
+                elif indicator_name.lower() in ['volume_profile', 'vp']:
                     indicator_name = 'volume_profile'
-                elif indicator_name in ['price_action', 'pa']:
+                elif indicator_name.lower() in ['price_action', 'pa']:
                     indicator_name = 'price_action'
-                elif indicator_name in ['order_flow', 'of']:
+                elif indicator_name.lower() in ['order_flow', 'of']:
                     indicator_name = 'order_flow'
-                elif indicator_name in ['supply_demand', 'sd']:
+                elif indicator_name.lower() in ['supply_demand', 'sd']:
                     indicator_name = 'supply_demand'
-                elif indicator_name in ['support_resistance', 'sr']:
+                elif indicator_name.lower() in ['support_resistance', 'sr']:
                     indicator_name = 'support_resistance'
-                elif indicator_name in ['market_structure', 'ms']:
+                elif indicator_name.lower() in ['market_structure', 'ms']:
                     indicator_name = 'market_structure'
                 
-                result = calculate_indicator(df, indicator_name, params)
-                results[indicator_request.name] = result
+                result = calculate_indicator(df, indicator_name.lower(), params)
+                results[indicator_name] = result
                 
             except Exception as e:
-                results[indicator_request.name] = {"error": str(e)}
+                results[indicator_name] = {"error": str(e)}
         
         # Add candlestick patterns if requested
         if request.include_patterns:
@@ -126,7 +124,7 @@ async def predict_binary_options_direction(request: BinaryOptionsRequest) -> Dic
     """
     try:
         # Convert OHLC data to DataFrame
-        df = convert_ohlc_to_dataframe(request.data)
+        df = convert_ohlc_to_dataframe(request.ohlc_data)
         
         # Validate minimum data points
         if len(df) < 30:
@@ -136,11 +134,11 @@ async def predict_binary_options_direction(request: BinaryOptionsRequest) -> Dic
             )
         
         # Generate prediction
-        prediction = predict_binary_options(df, request.timeframe_minutes)
+        prediction = predict_binary_options(df, request.prediction_timeframe)
         
         # Add request info
         prediction["request_info"] = {
-            "timeframe_minutes": request.timeframe_minutes,
+            "prediction_timeframe": request.prediction_timeframe,
             "data_points": len(df),
             "current_price": float(df['close'].iloc[-1])
         }

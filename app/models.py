@@ -58,6 +58,7 @@ class AnalysisRequest(BaseModel):
     """Model for the main request containing indicators and OHLC data"""
     indicators: Dict[str, List[Union[int, float]]]
     ohlc_data: List[OHLCData]
+    include_patterns: Optional[bool] = True
 
 
 class BinaryOptionsRequest(BaseModel):
