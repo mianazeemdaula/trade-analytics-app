@@ -2,6 +2,14 @@
 Candlestick pattern detection module
 """
 
+import warnings
+import os
+
+# Suppress all pandas_ta related warnings including pkg_resources deprecation
+warnings.filterwarnings("ignore", message="pkg_resources is deprecated")
+warnings.filterwarnings("ignore", category=UserWarning, module="pandas_ta")
+os.environ['PYTHONWARNINGS'] = 'ignore::UserWarning:pandas_ta'
+
 from typing import Dict, List
 import pandas as pd
 import pandas_ta as ta
