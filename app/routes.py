@@ -87,7 +87,8 @@ async def analyze_indicators(request: AnalysisRequest) -> Dict[str, Any]:
                 results["candlestick_patterns"] = {
                     "detected_patterns": patterns,
                     "interpretations": pattern_interpretations,
-                    "signals": pattern_signals
+                    "signals": pattern_signals,
+                    "recent_patterns_with_timestamps": pattern_signals.get("recent_patterns", [])
                 }
             except Exception as e:
                 results["candlestick_patterns"] = {"error": str(e)}
