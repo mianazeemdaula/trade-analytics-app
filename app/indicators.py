@@ -66,13 +66,16 @@ def calculate_indicator(df: pd.DataFrame, indicator_name: str, params: List[Unio
                 result['sma'] = round(float(sma_values.iloc[-1]), 2)
         
         elif indicator_name.lower() == 'ema':
-            # EMA - Exponential Moving Average
-            if len(params) != 1:
-                raise ValueError("EMA requires exactly 1 parameter (period)")
-            period = int(params[0])
-            ema_values = ta.ema(df['close'], length=period)
-            if not ema_values.empty:
-                result['ema'] = round(float(ema_values.iloc[-1]), 2)
+            # EMA - Exponential Moving Average (supports multiple periods)
+            if len(params) == 0:
+                raise ValueError("EMA requires at least 1 parameter (period)")
+            
+            # Calculate EMA for each period provided
+            for period in params:
+                period = int(period)
+                ema_values = ta.ema(df['close'], length=period)
+                if not ema_values.empty:
+                    result[f'ema_{period}'] = round(float(ema_values.iloc[-1]), 2)
         
         elif indicator_name.lower() == 'bb' or indicator_name.lower() == 'bollinger':
             # Bollinger Bands
