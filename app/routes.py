@@ -81,14 +81,17 @@ async def analyze_indicators(request: AnalysisRequest) -> Dict[str, Any]:
         if request.include_patterns:
             try:
                 patterns = calculate_candlestick_patterns(df)
-                pattern_interpretations = get_pattern_interpretation(patterns)
                 pattern_signals = get_pattern_signals(patterns)
                 
+                # Simplified response with only essential information
                 results["candlestick_patterns"] = {
-                    "detected_patterns": patterns,
-                    "interpretations": pattern_interpretations,
-                    "signals": pattern_signals,
-                    "recent_patterns_with_timestamps": pattern_signals.get("recent_patterns", [])
+                    "recent_patterns": pattern_signals.get("recent_patterns", []),
+                    "overall_signal": pattern_signals.get("overall_signal", "neutral"),
+                    "signal_strength": pattern_signals.get("signal_strength", "weak"),
+                    "detected_pattern_counts": {
+                        pattern: patterns[pattern].get('total_signals', 1) if isinstance(patterns[pattern], dict) else 1
+                        for pattern in pattern_signals.get("detected_patterns", [])
+                    }
                 }
             except Exception as e:
                 results["candlestick_patterns"] = {"error": str(e)}
